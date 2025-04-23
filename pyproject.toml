@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "pymupdf-service"
+version = "0.1.0"
+description = ""
+package-mode = false
+authors = ["englader <markoski.stefan@yahoo.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pymupdf = "^1.25.5"
+uvicorn = "^0.34.1"
+python-multipart = "^0.0.20"
+fastapi = "^0.115.12"
+dependency-injector = "^4.42.0"
+pyyaml = "^6.0.2"
+pydantic-settings = "^2.5.2"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+flake8 = "^6.0.0"
+pytest-asyncio = "^0.23.3"
+pytest = "^8.3.5"
+ruff = "^0.9.10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
