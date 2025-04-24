@@ -1,6 +1,9 @@
 # app/services/pdf_service.py
 from concurrent.futures import ProcessPoolExecutor
+from typing import Optional
+
 from fastapi import UploadFile
+from src.models.data_schemas import ParseConfig
 
 from src.parser_lib.pdf_parser import PymupdfParser
 
@@ -30,10 +33,12 @@ class PDFParseService:
 
         self._executor = ProcessPoolExecutor(max_workers=max_processors)
 
-    async def parse(self, file: UploadFile):
+    async def parse(self, file: UploadFile, parse_config: Optional[ParseConfig]):
         """Parse the given PDF content and return elements and page count."""
         content = await file.read()
-        elements, num_pages = await self._parser.parse(content, self._executor)
+        elements, num_pages = await self._parser.parse(
+            content, self._executor, parse_config
+        )
 
         serializable_elements = [
             {

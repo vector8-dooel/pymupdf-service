@@ -5,6 +5,7 @@ import os
 import logging
 from typing import Tuple, List, Optional
 
+from src.models.data_schemas import ParseConfig
 from src.parser_lib.base import BaseParser
 from src.parser_lib.categories import Element
 
@@ -40,7 +41,10 @@ class PymupdfParser(BaseParser):
         self.tolerance = tolerance
 
     async def parse(
-        self, file: bytes, executor: ProcessPoolExecutor
+        self,
+        file: bytes,
+        executor: ProcessPoolExecutor,
+        parse_config: Optional[ParseConfig] = None,
     ) -> Tuple[List[Element], int]:
         """
         Parse a PDF file and extract elements such as text and tables.
@@ -48,11 +52,34 @@ class PymupdfParser(BaseParser):
         Args:
             file (bytes): Byte content of the PDF file to parse.
             executor: Process executor
+            parse_config: Object containing parsing options.
 
         Returns:
             Tuple[list[Element], int]: A list of parsed elements containing content and metadata,
                                       and the number of pages in the document.
         """
+
+        footer_margin = (
+            parse_config.footer_margin
+            if parse_config and parse_config.footer_margin is not None
+            else self.footer_margin
+        )
+        header_margin = (
+            parse_config.header_margin
+            if parse_config and parse_config.header_margin is not None
+            else self.header_margin
+        )
+        no_image_text = (
+            parse_config.no_image_text
+            if parse_config and parse_config.no_image_text is not None
+            else self.no_image_text
+        )
+        tolerance = (
+            parse_config.tolerance
+            if parse_config and parse_config.tolerance is not None
+            else self.tolerance
+        )
+
         try:
             # Open the document directly from memory
             doc = fitz.open(stream=file, filetype="pdf")
@@ -65,14 +92,22 @@ class PymupdfParser(BaseParser):
 
             # Create arguments for each worker
             chunk_args = [
-                (file, start_page, end_page) for start_page, end_page in page_segments
+                (
+                    file,
+                    start_page,
+                    end_page,
+                    footer_margin,
+                    header_margin,
+                    no_image_text,
+                    tolerance,
+                )
+                for start_page, end_page in page_segments
             ]
 
             # Process pages in parallel
-
             loop = asyncio.get_running_loop()
             tasks = [
-                loop.run_in_executor(executor, self.process_page_chunk, arg)
+                loop.run_in_executor(executor, self.process_page_chunk, *arg)
                 for arg in chunk_args
             ]
             chunk_results = await asyncio.gather(*tasks)
@@ -137,7 +172,14 @@ class PymupdfParser(BaseParser):
         return chunks
 
     def process_page_chunk(
-        self, args: Tuple[bytes, int, int]
+        self,
+        file_bytes: bytes,
+        start_page: int,
+        end_page: int,
+        footer_margin: int,
+        header_margin: int,
+        no_image_text: bool,
+        tolerance: int,
     ) -> List[Tuple[int, list]]:
         """
         Process a chunk of pages and extract their content.
@@ -148,22 +190,29 @@ class PymupdfParser(BaseParser):
         Returns:
             List[Tuple[int, list]]: List of page numbers and their extracted content.
         """
-        file_bytes, start_page, end_page = args
-
         results = []
         doc = fitz.open(stream=file_bytes, filetype="pdf")
 
         for page_num in range(start_page, end_page):
             page = doc[page_num]
             page.wrap_contents()
-            content = self.get_ordered_content(page)
+            content = self.get_ordered_content(
+                page, footer_margin, header_margin, no_image_text, tolerance
+            )
             results.append((page_num, content))
 
         doc.close()
 
         return results
 
-    def get_ordered_content(self, page) -> List:
+    def get_ordered_content(
+        self,
+        page,
+        footer_margin: int,
+        header_margin: int,
+        no_image_text: bool,
+        tolerance: int,
+    ) -> List:
         """
         Extract and order content from a page, distinguishing between text and tables.
 
@@ -173,11 +222,13 @@ class PymupdfParser(BaseParser):
         Returns:
             List: Ordered content as bounding boxes with their associated types (text or table).
         """
-        text_bboxes = self.column_boxes(page)
+        text_bboxes = self.column_boxes(
+            page, footer_margin, header_margin, no_image_text
+        )
 
         tables = page.find_tables()
         table_bboxes = [fitz.IRect(table.bbox) for table in tables]
-        merged_tables = self.merge_tables(table_bboxes)
+        merged_tables = self.merge_tables(table_bboxes, tolerance)
 
         ordered_content = []
         processed_tables = set()
@@ -237,7 +288,9 @@ class PymupdfParser(BaseParser):
                 ordered_content.append((current_bbox, "text"))
         return ordered_content
 
-    def column_boxes(self, page):
+    def column_boxes(
+        self, page, footer_margin: int, header_margin: int, no_image_text: bool
+    ):
         """
         Extract column bounding boxes from a page.
         Handles edge cases where blocks have no lines or invalid bounding boxes.
@@ -256,8 +309,8 @@ class PymupdfParser(BaseParser):
         vert_bboxes = []
 
         clip = +page.rect
-        clip.y1 -= self.footer_margin
-        clip.y0 += self.header_margin
+        clip.y1 -= footer_margin
+        clip.y0 += header_margin
 
         def can_extend(temp, bb, bboxlist):
             for b in bboxlist:
@@ -376,7 +429,7 @@ class PymupdfParser(BaseParser):
             for b in blocks:
                 bbox = fitz.IRect(b["bbox"])
 
-                if self.no_image_text and in_bbox(bbox, img_bboxes):
+                if no_image_text and in_bbox(bbox, img_bboxes):
                     continue
 
                 # Check if 'lines' key exists and is not empty
@@ -500,7 +553,7 @@ class PymupdfParser(BaseParser):
 
         return bbox_above, bbox_below
 
-    def merge_tables(self, table_bboxes):
+    def merge_tables(self, table_bboxes, tolerance: int):
         """
         Merge overlapping or closely aligned table bounding boxes.
 
@@ -517,7 +570,7 @@ class PymupdfParser(BaseParser):
         current_group = table_bboxes[0]
 
         for bbox in table_bboxes[1:]:
-            if self.should_merge_tables(current_group, bbox):
+            if self.should_merge_tables(current_group, bbox, tolerance):
                 current_group = fitz.IRect(
                     min(current_group.x0, bbox.x0),
                     min(current_group.y0, bbox.y0),
@@ -531,7 +584,7 @@ class PymupdfParser(BaseParser):
         merged.append(current_group)
         return merged
 
-    def should_merge_tables(self, bbox1, bbox2):
+    def should_merge_tables(self, bbox1, bbox2, tolerance: int):
         """
         Determine whether two table bounding boxes should be merged based on alignment and proximity.
 
@@ -543,20 +596,18 @@ class PymupdfParser(BaseParser):
             bool: True if the bounding boxes should be merged, otherwise False.
         """
         horizontally_aligned = (
-            abs(bbox1.y0 - bbox2.y0) < self.tolerance
-            and abs(bbox1.y1 - bbox2.y1) < self.tolerance
+            abs(bbox1.y0 - bbox2.y0) < tolerance
+            and abs(bbox1.y1 - bbox2.y1) < tolerance
         )
         vertically_aligned = (
-            abs(bbox1.x0 - bbox2.x0) < self.tolerance
-            and abs(bbox1.x1 - bbox2.x1) < self.tolerance
+            abs(bbox1.x0 - bbox2.x0) < tolerance
+            and abs(bbox1.x1 - bbox2.x1) < tolerance
         )
 
         horizontal_distance = min(abs(bbox1.x1 - bbox2.x0), abs(bbox2.x1 - bbox1.x0))
         vertical_distance = min(abs(bbox1.y1 - bbox2.y0), abs(bbox2.y1 - bbox1.y0))
 
-        is_close = (
-            horizontal_distance < self.tolerance or vertical_distance < self.tolerance
-        )
+        is_close = horizontal_distance < tolerance or vertical_distance < tolerance
 
         return (horizontally_aligned or vertically_aligned) and is_close
 
