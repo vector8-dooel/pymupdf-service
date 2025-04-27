@@ -1,0 +1,6 @@
+parser_settings:
+  max_processors: 4
+  footer_margin: 0
+  header_margin: 0
+  no_image_text: False
+  tolerance: 20
