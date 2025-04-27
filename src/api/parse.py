@@ -1,10 +1,10 @@
 # app/api/parse.py
 from typing import Optional
 
-from fastapi import UploadFile,File, Form
+from fastapi import UploadFile, File, Form
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 
 from src.config.injection import Container
 from src.models.data_schemas import ParseConfig

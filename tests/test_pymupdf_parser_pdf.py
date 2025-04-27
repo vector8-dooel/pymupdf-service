@@ -68,7 +68,16 @@ def test_process_page_chunk(mock_fitz_open, default_parser):
     mock_page.wrap_contents = MagicMock()
     default_parser.get_ordered_content = MagicMock(return_value=[(("bbox"), "text")])
 
-    results = default_parser.process_page_chunk(("dummy.pdf", 0, 3))
+    file_bytes = b"dummy"
+    results = default_parser.process_page_chunk(
+        file_bytes,
+        0,
+        3,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+        default_parser.tolerance,
+    )
     assert len(results) == 3
     default_parser.get_ordered_content.assert_called()
 
@@ -98,7 +107,7 @@ def test_merge_tables(default_parser, bboxes, expected_len):
     # Mock the bounding boxes
     bboxes_mock = [MagicMock(**bbox) for bbox in bboxes]
 
-    merged_tables = default_parser.merge_tables(bboxes_mock)
+    merged_tables = default_parser.merge_tables(bboxes_mock, default_parser.tolerance)
     assert len(merged_tables) == expected_len
 
 
@@ -148,7 +157,9 @@ def test_should_merge_tables(default_parser, bbox1, bbox2, expected_result):
     bbox1_mock = MagicMock(**bbox1)
     bbox2_mock = MagicMock(**bbox2)
 
-    result = default_parser.should_merge_tables(bbox1_mock, bbox2_mock)
+    result = default_parser.should_merge_tables(
+        bbox1_mock, bbox2_mock, default_parser.tolerance
+    )
     assert result is expected_result
 
 
@@ -210,7 +221,13 @@ def test_get_ordered_content_text_only(default_parser):
     mock_page = MagicMock()
     mock_page.find_tables.return_value = []
     mock_page.get_text.return_value = "sample text"
-    result = default_parser.get_ordered_content(mock_page)
+    result = default_parser.get_ordered_content(
+        mock_page,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+        default_parser.tolerance,
+    )
     assert result == [(ANY, "text")]
 
 
@@ -228,7 +245,13 @@ def test_get_ordered_content_tables_only(default_parser):
     default_parser.extract_bbox_text = MagicMock(return_value="")
     default_parser.split_bbox_by_table = MagicMock(return_value=(None, None))
 
-    result = default_parser.get_ordered_content(mock_page)
+    result = default_parser.get_ordered_content(
+        mock_page,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+        default_parser.tolerance,
+    )
 
     assert len(result) == 1
     assert result[0][1] == "table"
@@ -247,7 +270,13 @@ def test_get_ordered_content_text_and_tables(default_parser):
 
     default_parser.extract_bbox_text = MagicMock(return_value="sample text")
 
-    result = default_parser.get_ordered_content(mock_page)
+    result = default_parser.get_ordered_content(
+        mock_page,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+        default_parser.tolerance,
+    )
 
     assert len(result) > 0
     assert any(item[1] == "text" for item in result)
@@ -260,7 +289,12 @@ def test_column_boxes_varied_structure(default_parser):
     mock_page.get_text.return_value = {
         "blocks": [{"bbox": (0, 0, 10, 10), "lines": [{"dir": (1, 0)}]}]
     }
-    result = default_parser.column_boxes(mock_page)
+    result = default_parser.column_boxes(
+        mock_page,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+    )
     assert len(result) > 0
 
 
@@ -268,7 +302,12 @@ def test_column_boxes_no_valid_blocks(default_parser):
     """Test column_boxes with pages having no valid blocks."""
     mock_page = MagicMock()
     mock_page.get_text.return_value = {"blocks": []}
-    result = default_parser.column_boxes(mock_page)
+    result = default_parser.column_boxes(
+        mock_page,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+    )
     assert result == [ANY]
 
 
@@ -320,7 +359,12 @@ def test_column_boxes_with_invalid_block_data(default_parser):
     mock_page.rect = MagicMock()
     mock_page.rect.width = 100
 
-    result = default_parser.column_boxes(mock_page)
+    result = default_parser.column_boxes(
+        mock_page,
+        default_parser.footer_margin,
+        default_parser.header_margin,
+        default_parser.no_image_text,
+    )
     assert result is not None
 
 
@@ -332,19 +376,27 @@ def test_process_page_chunk_exception(mock_fitz_open, default_parser):
     mock_fitz_open.return_value = mock_doc
 
     with pytest.raises(Exception):
-        default_parser.process_page_chunk(("dummy.pdf", 0, 3))
+        default_parser.process_page_chunk(
+            b"dummy",
+            0,
+            3,
+            default_parser.footer_margin,
+            default_parser.header_margin,
+            default_parser.no_image_text,
+            default_parser.tolerance,
+        )
 
 
 def test_merge_tables_empty_input(default_parser):
     """Test merge_tables with empty input."""
-    result = default_parser.merge_tables([])
+    result = default_parser.merge_tables([], default_parser.tolerance)
     assert result == []
 
 
 def test_merge_tables_single_input(default_parser):
     """Test merge_tables with single table bbox."""
     bbox = MagicMock(x0=0, y0=0, x1=10, y1=10)
-    result = default_parser.merge_tables([bbox])
+    result = default_parser.merge_tables([bbox], default_parser.tolerance)
     assert len(result) == 1
     assert result[0] == bbox
 

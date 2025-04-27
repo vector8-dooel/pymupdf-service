@@ -3,7 +3,7 @@ name = "pymupdf-service"
 version = "0.1.0"
 description = ""
 package-mode = false
-authors = ["englader <markoski.stefan@yahoo.com>"]
+authors = ["Laze Gjorgiev <laze.gjorgiev@vector8.com>", "englader <markoski.stefan@yahoo.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
