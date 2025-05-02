@@ -18,13 +18,13 @@ RUN python -m pip install --upgrade pip && \
 WORKDIR /app
 
 # Copy project metadata for better caching
-COPY pyproject.toml poetry.lock* ./
+COPY ../pyproject.toml poetry.lock* ./
 
 # Install dependencies into project .venv
 RUN poetry install --no-interaction --no-ansi
 
 # Copy application code
-COPY . .
+COPY .. .
 
 EXPOSE 8888
 ENV PORT=8888

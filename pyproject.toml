@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pymupdf-service"
-version = "0.1.0"
+version = "1.0.0"
 description = ""
 package-mode = false
 authors = ["Laze Gjorgiev <laze.gjorgiev@vector8.com>", "englader <markoski.stefan@yahoo.com>"]
